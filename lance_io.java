@@ -5,8 +5,8 @@ import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import java.util.List;
 
 class LanceReader {
-    private static native List<int []> readRangeJni(String dir,int start, int end);
-    private static native List<int []> readIndexJni(String dir,int[] indices);
+    private static native List<long []> readRangeJni(String dir,int start, int end);
+    private static native List<long []> readIndexJni(String dir,int[] indices);
     static {
         System.loadLibrary("lanceio");
     }

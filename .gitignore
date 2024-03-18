@@ -1,0 +1,4 @@
+*.vscode*
+*target
+arrow-vector-15.0.0.jar:Zone.Identifier
+arrow-vector-15.0.0.jar

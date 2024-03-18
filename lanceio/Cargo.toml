@@ -1,0 +1,12 @@
+[package]
+name = "lanceio"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jni = "0.21.1"
+lance = "0.10.1"
+arrow = { version = "50.0.0", features = ["ffi"] }
+
+[lib]
+crate_type = ["cdylib"]

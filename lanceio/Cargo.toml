@@ -7,6 +7,7 @@ edition = "2021"
 jni = "0.21.1"
 lance = "0.10.1"
 arrow = { version = "50.0.0", features = ["ffi"] }
+tokio = { version = "1.36.0", features = ["full"] }
 
 [lib]
 crate_type = ["cdylib"]

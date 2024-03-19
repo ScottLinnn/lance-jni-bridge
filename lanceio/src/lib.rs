@@ -1,13 +1,15 @@
 use std::mem::ManuallyDrop;
+use std::ops::Range;
 use std::vec;
 
-use jni::objects::{JClass, JIntArray, JObject, JString, JValue};
-use jni::sys::{jint, jintArray, jobject, jstring};
+use arrow::array::{Array, ArrayData, Int32Array, RecordBatch};
+use arrow::ffi::{to_ffi, FFI_ArrowArray, FFI_ArrowSchema};
+use jni::objects::{JClass, JIntArray, JObject, JObjectArray, JString, JValue};
+use jni::sys::{jint, jintArray, jlongArray, jobject, jobjectArray, jsize, jstring};
 use jni::JNIEnv;
 use lance::arrow::schema;
 use lance::Dataset;
-use arrow::array::{Array, ArrayData, Int32Array, RecordBatch};
-use arrow::ffi::{to_ffi, FFI_ArrowArray, FFI_ArrowSchema};
+use tokio::runtime::Runtime;
 
 #[no_mangle]
 pub extern "system" fn Java_LanceReader_readRange<'local>(
@@ -20,27 +22,62 @@ pub extern "system" fn Java_LanceReader_readRange<'local>(
     // Get the path string from the Java side
     let path_str: String = env.get_string(&path).unwrap().into();
 
-    // Your implementation for readRange goes here
-    // You can use the path_str, start, and end parameters to read the data
-    // and return an instance of org.apache.arrow.vector.ipc.message.ArrowRecordBatch
+    let mut dataset = None;
+    // Use a runtime to open the dataset
+    let rt = Runtime::new().unwrap();
 
-    // For now, we'll just return a null object
-    jobject::null()
+    // Block the current thread until the asynchronous function completes
+
+    rt.block_on(async {
+        // Open the dataset asynchronously
+        dataset = Some(Dataset::open(&path_str).await.unwrap());
+    });
+
+    let schema = dataset.as_ref().unwrap().schema();
+    let fragment = &dataset.as_ref().unwrap().get_fragments()[0];
+    let mut record_batch = None;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let reader = fragment.open(schema, false).await.unwrap();
+        // Build range from start and end
+        let range = start as usize..end as usize;
+        record_batch = Some(reader.read_range(range).await.unwrap());
+    });
+
+    // Convert the record batch to a list of two-size array
+    let array_list = export_array(record_batch.unwrap());
+
+    let len = array_list.len();
+    let arr_size = 2 * len;
+
+    // init a i64 array with size arr_size
+    let arr = env.new_long_array(arr_size as jsize).unwrap();
+
+    // set the elements of the array
+    let mut start = 0;
+    for pair in array_list {
+        env.set_long_array_region(&arr, start, &pair).unwrap();
+        start += 2;
+    }
+
+    arr.as_raw()
 }
 
 #[no_mangle]
-pub async extern "system" fn Java_LanceReader_readIndex <'local>(
+pub extern "system" fn Java_LanceReader_readIndex<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     path: JString<'local>,
     indices: JIntArray<'local>,
-) -> jobject {
+) -> jlongArray {
     // Get the path string from the Java side
     let path_str: String = env.get_string(&path).unwrap().into();
 
     // Get the indices array from the Java side
     let indices_vec: Vec<u32> = unsafe {
-        let ae = env.get_array_elements(&indices, jni::sys::ReleaseMode::NoCopyBack).unwrap();
+        let ae = env
+            .get_array_elements(&indices, jni::objects::ReleaseMode::NoCopyBack)
+            .unwrap();
         let len = ae.len();
         let mut vec = Vec::with_capacity(len as usize);
         let mut iter = ae.iter();
@@ -52,19 +89,46 @@ pub async extern "system" fn Java_LanceReader_readIndex <'local>(
     };
 
     // Now this assumes the dataset at path_str exists, and the first fragment contains the indices!
-    let dataset = Dataset::open(&path_str).await.unwrap();
-    let schema = dataset.schema();
-    let fragment = &dataset.get_fragments()[0];
-    let res_len = indices_vec.len();
-    // let mut vec = Vec::with_capacity(res_len as usize);
-    
-    let record_batch = fragment.take(&indices_vec[..],schema).await.unwrap();
 
+    let mut dataset = None;
+    // Use a runtime to open the dataset
+    let rt = Runtime::new().unwrap();
 
-    jobject::
+    // Block the current thread until the asynchronous function completes
+
+    rt.block_on(async {
+        // Open the dataset asynchronously
+        dataset = Some(Dataset::open(&path_str).await.unwrap());
+    });
+
+    let schema = dataset.as_ref().unwrap().schema();
+    let fragment = &dataset.as_ref().unwrap().get_fragments()[0];
+    let mut record_batch: Option<RecordBatch> = None;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        record_batch = Some(fragment.take(&indices_vec[..], schema).await.unwrap());
+    });
+
+    // Convert the record batch to a list of two-size array
+    let array_list = export_array(record_batch.unwrap());
+
+    let len = array_list.len();
+    let arr_size = 2 * len;
+
+    // init a i64 array with size arr_size
+    let arr = env.new_long_array(arr_size as jsize).unwrap();
+
+    // set the elements of the array
+    let mut start = 0;
+    for pair in array_list {
+        env.set_long_array_region(&arr, start, &pair).unwrap();
+        start += 2;
+    }
+
+    arr.as_raw()
 }
 
-pub fn export_array(rb : RecordBatch) -> Vec<[i64; 2]> {
+pub fn export_array(rb: RecordBatch) -> Vec<[i64; 2]> {
     // Export it
     let mut vec = Vec::new();
     for i in 0..rb.num_columns() {
@@ -80,8 +144,73 @@ pub fn export_array(rb : RecordBatch) -> Vec<[i64; 2]> {
 
         vec.push([schema_addr, array_addr]);
     }
-    vec 
+    vec
     //https://docs.rs/arrow/33.0.0/arrow/ffi/index.html
     //https://arrow.apache.org/docs/java/cdata.html#java-to-c
     //https://github.com/apache/arrow-rs/blob/3761ac53cab55c269b06d9a13825dd81b03e0c11/arrow/src/ffi.rs#L579-L580
 }
+
+// #[no_mangle]
+// pub async extern "system" fn Java_LanceReader_readIndex<'local>(
+//     mut env: JNIEnv<'local>,
+//     _class: JClass<'local>,
+//     path: JString<'local>,
+//     indices: JIntArray<'local>,
+// ) -> jlongArray {
+//     // Get the path string from the Java side
+//     let path_str: String = env.get_string(&path).unwrap().into();
+
+//     // Get the indices array from the Java side
+//     let indices_vec: Vec<u32> = unsafe {
+//         let ae = env
+//             .get_array_elements(&indices, jni::objects::ReleaseMode::NoCopyBack)
+//             .unwrap();
+//         let len = ae.len();
+//         let mut vec = Vec::with_capacity(len as usize);
+//         let mut iter = ae.iter();
+//         for i in 0..len {
+//             let val = iter.next().unwrap();
+//             vec.push(val.clone() as u32);
+//         }
+//         vec
+//     };
+
+//     // Now this assumes the dataset at path_str exists, and the first fragment contains the indices!
+//     let dataset = Dataset::open(&path_str).await.unwrap();
+//     let schema = dataset.schema();
+//     let fragment = &dataset.get_fragments()[0];
+
+//     let record_batch = fragment.take(&indices_vec[..], schema).await.unwrap();
+
+//     // Convert the record batch to a list of two-size array
+//     let array_list = export_array(record_batch);
+
+//     // Create a new array of JObject
+//     let mut pointer_array: Vec<JObject<'local>> = Vec::new();
+
+//     // Iterate over the array list and create JObject for each pair
+//     for pair in array_list {
+//         let pair_array = env.new_long_array(2).unwrap();
+//         env.set_long_array_region(&pair_array, 0, &pair);
+//         pointer_array.push(JObject::from(pair_array));
+//     }
+
+//     // Get the length of the vector
+//     let length = pointer_array.len() as jsize;
+
+//     // Get the class of the elements in the vector
+//     let element_class = env.get_object_class(&pointer_array[0]).unwrap();
+
+//     // Create a new array of objects with the same class as the elements
+//     let array = env
+//         .new_object_array(length, &element_class, JObject::null())
+//         .unwrap();
+
+//     // Iterate over the vector and set each element in the array
+//     for (index, item) in pointer_array.iter().enumerate() {
+//         env.set_object_array_element(&array, index as jsize, item.clone())
+//             .unwrap();
+//     }
+
+//     array.as_raw()
+// }

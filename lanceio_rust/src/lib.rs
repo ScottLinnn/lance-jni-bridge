@@ -11,14 +11,43 @@ use lance::arrow::schema;
 use lance::Dataset;
 use tokio::runtime::Runtime;
 
+pub mod create_file;
+pub mod create_frag;
+
 #[no_mangle]
-pub extern "system" fn Java_LanceReader_readRange<'local>(
+pub extern "system" fn Java_jni_LanceReader_hello<'local>(
+    mut env: JNIEnv<'local>,
+    // This is the class that owns our static method. It's not going to be used,
+    // but still must be present to match the expected signature of a static
+    // native method.
+    class: JClass<'local>,
+    input: JString<'local>,
+) -> jstring {
+    // First, we have to get the string out of Java. Check out the `strings`
+    // module for more info on how this works.
+    let input: String = env
+        .get_string(&input)
+        .expect("Couldn't get java string!")
+        .into();
+    let new_input = input + "hello from Rust!";
+    // Then we have to create a new Java string to return. Again, more info
+    // in the `strings` module.
+    let output = env
+        .new_string(format!("Hello, {}!", new_input))
+        .expect("Couldn't create java string!");
+
+    // Finally, extract the raw pointer to return.
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_jni_LanceReader_readRangeJni<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     path: JString<'local>,
     start: jint,
     end: jint,
-) -> jobject {
+) -> jlongArray {
     // Get the path string from the Java side
     let path_str: String = env.get_string(&path).unwrap().into();
 
@@ -64,7 +93,7 @@ pub extern "system" fn Java_LanceReader_readRange<'local>(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_LanceReader_readIndex<'local>(
+pub extern "system" fn Java_jni_LanceReader_readIndexJni<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     path: JString<'local>,

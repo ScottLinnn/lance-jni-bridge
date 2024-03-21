@@ -1,4 +1,4 @@
-package com.example;
+package jni;
 
 import org.apache.arrow.flatbuf.Schema;
 import org.apache.arrow.vector.FieldVector;
@@ -12,6 +12,9 @@ import org.apache.arrow.c.ArrowArray;
 import org.apache.arrow.c.ArrowSchema;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.*;
+import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -19,13 +22,42 @@ import java.util.ArrayList;
 import java.util.List;
 
 class LanceReader {
+
+    public static void printFieldVector(FieldVector vector) {
+        int valueCount = vector.getValueCount();
+
+        System.out.println("Printing FieldVector data:");
+
+        for (int i = 0; i < valueCount; i++) {
+            if (vector.isNull(i)) {
+                System.out.println("null");
+            } else {
+                // Depending on the data type of the vector, you'll need to use different
+                // methods
+                if (vector instanceof IntVector) {
+                    System.out.println(((IntVector) vector).get(i));
+                } else if (vector instanceof Float8Vector) {
+                    System.out.println(((Float8Vector) vector).get(i));
+                } else if (vector instanceof VarCharVector) {
+                    System.out.println(((VarCharVector) vector).getObject(i).toString());
+                } else {
+                    // Handle other data types as needed
+                    System.out.println("Unsupported data type");
+                }
+            }
+        }
+    }
+
+    static {
+        System.load("/home/scott/lance-jni-bridge/lanceio_rust/target/debug/liblanceio_jni.so");
+        System.loadLibrary("lanceio_jni");
+    }
+
+    private static native String hello(String input);
+
     private static native long[] readRangeJni(String path, int start, int end);
 
     private static native long[] readIndexJni(String path, int[] indices);
-
-    static {
-        System.loadLibrary("lanceio");
-    }
 
     public static ArrowRecordBatch readIndex(String path, int[] indices) {
         // Assuming you have a jobjectArray called result
@@ -42,7 +74,10 @@ class LanceReader {
             ArrowSchema arrowSchema = ArrowSchema.wrap(result[i]);
             ArrowArray array = ArrowArray.wrap(result[i + 1]);
 
-            vec.add(Data.importVector(allocator, array, arrowSchema, null));
+            FieldVector fieldVector = Data.importVector(allocator, array, arrowSchema, null);
+            System.out.println("readIndex, printing FieldVector data, i = " + i);
+            printFieldVector(fieldVector);
+            vec.add(fieldVector);
 
         }
 
@@ -68,17 +103,15 @@ class LanceReader {
 
             ArrowSchema arrowSchema = ArrowSchema.wrap(result[i]);
             ArrowArray array = ArrowArray.wrap(result[i + 1]);
-
-            vec.add(Data.importVector(allocator, array, arrowSchema, null));
+            FieldVector fieldVector = Data.importVector(allocator, array, arrowSchema, null);
+            System.out.println("readRange, printing FieldVector data, i = " + i);
+            printFieldVector(fieldVector);
+            vec.add(fieldVector);
 
         }
 
         // Build the vector schema root
         VectorSchemaRoot root = new VectorSchemaRoot((List<FieldVector>) vec);
-
-        // Print the contents of VectorSchemaRoot
-        System.out.println("Vector Schema Root:");
-        System.out.println(root);
 
         // Load ArrowRecordBatch from root
         VectorUnloader unloader = new VectorUnloader(root);
@@ -89,8 +122,12 @@ class LanceReader {
 
     // The rest is just regular ol' Java!
     public static void main(String[] args) {
+        System.out.println(hello("hello from Java!"));
         String base = "/home/scott/lance-jni-bridge/";
-        readRange(base + "test_frag", 0, 10);
+        readRange(base + "test_dataset", 0, 40);
+        readRange(base + "test_dataset", 20, 30);
+        int[] indices = { 24, 4, 15, 6, 26 };
+        readIndex(base + "test_dataset", indices);
     }
 }
 
@@ -99,6 +136,6 @@ class LanceWriter {
     private static native void write(String path, ArrowRecordBatch rb);
 
     static {
-        System.loadLibrary("lanceio");
+        System.loadLibrary("lanceio_jni");
     }
 }

@@ -49,7 +49,6 @@ class LanceReader {
     }
 
     static {
-        System.load("/home/scott/lance-jni-bridge/lanceio_rust/target/debug/liblanceio_jni.so");
         System.loadLibrary("lanceio_jni");
     }
 

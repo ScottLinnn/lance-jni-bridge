@@ -26,17 +26,17 @@ async fn create_frag() {
 
     let batch_iter = RecordBatchIterator::new(batches.into_iter().map(Ok), schema.clone());
 
-    // FileFragment::create(
-    //     test_uri,
-    //     10,
-    //     batch_iter,
-    //     Some(WriteParams {
-    //         max_rows_per_group: 100,
-    //         ..Default::default()
-    //     }),
-    // )
-    // .await
-    // .unwrap();
+    FileFragment::create(
+        test_uri,
+        10,
+        batch_iter,
+        Some(WriteParams {
+            max_rows_per_group: 100,
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap();
 }
 
 async fn create_dataset(test_uri: &str) -> Dataset {

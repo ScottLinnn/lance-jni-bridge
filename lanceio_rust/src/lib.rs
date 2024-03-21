@@ -12,7 +12,6 @@ use lance::Dataset;
 use tokio::runtime::Runtime;
 
 pub mod create_file;
-pub mod create_frag;
 
 #[no_mangle]
 pub extern "system" fn Java_jni_LanceReader_hello<'local>(
@@ -131,7 +130,7 @@ pub extern "system" fn Java_jni_LanceReader_readIndexJni<'local>(
     });
 
     let schema = dataset.as_ref().unwrap().schema();
-    let fragment = &dataset.as_ref().unwrap().get_fragments()[0];
+    let fragment = &dataset.as_ref().unwrap().get_fragments()[1];
     let mut record_batch: Option<RecordBatch> = None;
     let rt = Runtime::new().unwrap();
     rt.block_on(async {

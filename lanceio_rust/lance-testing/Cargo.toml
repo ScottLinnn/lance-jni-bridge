@@ -1,0 +1,12 @@
+[package]
+name = "lance-testing"
+version = "0.10.5"
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+rand = { workspace = true }
+num-traits = { workspace = true }
+lance-arrow = { workspace = true }

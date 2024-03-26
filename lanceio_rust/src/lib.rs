@@ -1,13 +1,8 @@
-use std::mem::ManuallyDrop;
-use std::ops::Range;
-use std::vec;
-
 use arrow::array::{Array, ArrayData, Int32Array, RecordBatch};
 use arrow::ffi::{to_ffi, FFI_ArrowArray, FFI_ArrowSchema};
 use jni::objects::{JClass, JIntArray, JObject, JObjectArray, JString, JValue};
 use jni::sys::{jint, jintArray, jlongArray, jobject, jobjectArray, jsize, jstring};
 use jni::JNIEnv;
-use lance::arrow::schema;
 use lance::Dataset;
 use tokio::runtime::Runtime;
 
@@ -177,68 +172,3 @@ pub fn export_array(rb: RecordBatch) -> Vec<[i64; 2]> {
     //https://arrow.apache.org/docs/java/cdata.html#java-to-c
     //https://github.com/apache/arrow-rs/blob/3761ac53cab55c269b06d9a13825dd81b03e0c11/arrow/src/ffi.rs#L579-L580
 }
-
-// #[no_mangle]
-// pub async extern "system" fn Java_LanceReader_readIndex<'local>(
-//     mut env: JNIEnv<'local>,
-//     _class: JClass<'local>,
-//     path: JString<'local>,
-//     indices: JIntArray<'local>,
-// ) -> jlongArray {
-//     // Get the path string from the Java side
-//     let path_str: String = env.get_string(&path).unwrap().into();
-
-//     // Get the indices array from the Java side
-//     let indices_vec: Vec<u32> = unsafe {
-//         let ae = env
-//             .get_array_elements(&indices, jni::objects::ReleaseMode::NoCopyBack)
-//             .unwrap();
-//         let len = ae.len();
-//         let mut vec = Vec::with_capacity(len as usize);
-//         let mut iter = ae.iter();
-//         for i in 0..len {
-//             let val = iter.next().unwrap();
-//             vec.push(val.clone() as u32);
-//         }
-//         vec
-//     };
-
-//     // Now this assumes the dataset at path_str exists, and the first fragment contains the indices!
-//     let dataset = Dataset::open(&path_str).await.unwrap();
-//     let schema = dataset.schema();
-//     let fragment = &dataset.get_fragments()[0];
-
-//     let record_batch = fragment.take(&indices_vec[..], schema).await.unwrap();
-
-//     // Convert the record batch to a list of two-size array
-//     let array_list = export_array(record_batch);
-
-//     // Create a new array of JObject
-//     let mut pointer_array: Vec<JObject<'local>> = Vec::new();
-
-//     // Iterate over the array list and create JObject for each pair
-//     for pair in array_list {
-//         let pair_array = env.new_long_array(2).unwrap();
-//         env.set_long_array_region(&pair_array, 0, &pair);
-//         pointer_array.push(JObject::from(pair_array));
-//     }
-
-//     // Get the length of the vector
-//     let length = pointer_array.len() as jsize;
-
-//     // Get the class of the elements in the vector
-//     let element_class = env.get_object_class(&pointer_array[0]).unwrap();
-
-//     // Create a new array of objects with the same class as the elements
-//     let array = env
-//         .new_object_array(length, &element_class, JObject::null())
-//         .unwrap();
-
-//     // Iterate over the vector and set each element in the array
-//     for (index, item) in pointer_array.iter().enumerate() {
-//         env.set_object_array_element(&array, index as jsize, item.clone())
-//             .unwrap();
-//     }
-
-//     array.as_raw()
-// }

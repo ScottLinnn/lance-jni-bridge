@@ -4,6 +4,9 @@ use jni::objects::{JClass, JIntArray, JObject, JObjectArray, JString, JValue};
 use jni::sys::{jint, jintArray, jlongArray, jobject, jobjectArray, jsize, jstring};
 use jni::JNIEnv;
 use lance::Dataset;
+use lance_file::reader::FileReader;
+use lance_file::writer::{FileWriter, NotSelfDescribing};
+use lance_io::object_store::{ObjectStore, Path};
 use tokio::runtime::Runtime;
 
 pub mod create_file;
@@ -45,27 +48,16 @@ pub extern "system" fn Java_jni_LanceReader_readRangeJni<'local>(
     // Get the path string from the Java side
     let path_str: String = env.get_string(&path).unwrap().into();
 
-    let mut dataset = None;
-    // Use a runtime to open the dataset
-    let rt = Runtime::new().unwrap();
-
-    // Block the current thread until the asynchronous function completes
-
-    rt.block_on(async {
-        // Open the dataset asynchronously
-        dataset = Some(Dataset::open(&path_str).await.unwrap());
-    });
-
     let schema = dataset.as_ref().unwrap().schema();
-    let fragment = &dataset.as_ref().unwrap().get_fragments()[0];
     let mut record_batch = None;
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        let reader = fragment.open(schema, false).await.unwrap();
-        // Build range from start and end
-        let range = start as usize..end as usize;
-        record_batch = Some(reader.read_range(range).await.unwrap());
-    });
+    // write to a lance file
+    let store = ObjectStore::from_path(&path_str);
+    let path = Path::from(path_str);
+    let reader = FileReader::try_new(&store, &path, schema).await.unwrap();
+    let actual_batch = reader
+        .read_range(start..end, reader.schema(), None)
+        .await
+        .unwrap();
 
     // Convert the record batch to a list of two-size array
     let array_list = export_array(record_batch.unwrap());
@@ -110,27 +102,13 @@ pub extern "system" fn Java_jni_LanceReader_readIndexJni<'local>(
         }
         vec
     };
-
-    // Now this assumes the dataset at path_str exists, and the first fragment contains the indices!
-
-    let mut dataset = None;
-    // Use a runtime to open the dataset
-    let rt = Runtime::new().unwrap();
-
-    // Block the current thread until the asynchronous function completes
-
-    rt.block_on(async {
-        // Open the dataset asynchronously
-        dataset = Some(Dataset::open(&path_str).await.unwrap());
-    });
-
-    let schema = dataset.as_ref().unwrap().schema();
-    let fragment = &dataset.as_ref().unwrap().get_fragments()[1];
-    let mut record_batch: Option<RecordBatch> = None;
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        record_batch = Some(fragment.take(&indices_vec[..], schema).await.unwrap());
-    });
+    let store = ObjectStore::from_path(&path_str);
+    let path = Path::from(path_str);
+    let reader = FileReader::try_new(&store, &path, schema).await.unwrap();
+    let record_batch = reader
+        .take(&indices_vec, reader.schema(), None)
+        .await
+        .unwrap();
 
     // Convert the record batch to a list of two-size array
     let array_list = export_array(record_batch.unwrap());
@@ -170,5 +148,6 @@ pub fn export_array(rb: RecordBatch) -> Vec<[i64; 2]> {
     vec
     //https://docs.rs/arrow/33.0.0/arrow/ffi/index.html
     //https://arrow.apache.org/docs/java/cdata.html#java-to-c
+    //https://stackoverflow.com/questions/75527485/how-to-export-arrow-rs-array-to-java
     //https://github.com/apache/arrow-rs/blob/3761ac53cab55c269b06d9a13825dd81b03e0c11/arrow/src/ffi.rs#L579-L580
 }

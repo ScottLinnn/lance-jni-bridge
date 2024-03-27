@@ -8,6 +8,8 @@ jni = "0.21.1"
 lance = "0.10.1"
 arrow = { version = "50.0.0", features = ["ffi"] }
 tokio = { version = "1.36.0", features = ["full"] }
+lance-io.workspace = true
+lance-file.workspace = true
 
 [lib]
 crate_type = ["cdylib"]
